@@ -1,0 +1,1149 @@
+<!-- profileAccessManager.html -->
+<template>
+    <div class="pam-root">
+
+        <!-- ── Header ──────────────────────────────────────────────────────── -->
+        <div class="pam-header">
+            <lightning-icon icon-name={headerIconName} size="medium" class="pam-header-icon-el"></lightning-icon>
+            <div class="pam-header-text">
+                <h1 class="pam-title">Profile Access Manager</h1>
+                <p class="pam-subtitle">{headerSubtitle}</p>
+            </div>
+        </div>
+
+        <!-- ── Error banner ──────────────────────────────────────────────── -->
+        <template if:true={loadError}>
+            <div class="pam-error-banner">
+                <lightning-icon icon-name="utility:error" size="small" variant="error"></lightning-icon>
+                <span>{loadError}</span>
+            </div>
+        </template>
+
+        <!-- ── Tab Bar ───────────────────────────────────────────────────── -->
+        <div class="pam-tab-bar">
+            <button class={tab1Class} data-tab="profile" onclick={handleTabClick}>
+                <lightning-icon icon-name="standard:profile" size="x-small" class="pam-tab-icon"></lightning-icon>
+                Profile Access
+            </button>
+            <button class={tab2Class} data-tab="object" onclick={handleTabClick}>
+                <lightning-icon icon-name="standard:entity" size="x-small" class="pam-tab-icon"></lightning-icon>
+                Object Access
+            </button>
+            <button class={tab3Class} data-tab="comparison" onclick={handleTabClick}>
+                <lightning-icon icon-name="utility:compare" size="x-small" class="pam-tab-icon"></lightning-icon>
+                Access Comparison
+            </button>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             TAB 1 – PROFILE ACCESS
+        ═══════════════════════════════════════════════════════════════════ -->
+        <template if:true={isTab1}>
+            <div class="pam-card">
+                <div class="pam-card-header">
+                    <span class="pam-section-title">Select Profiles</span>
+                    <template if:true={profilesLoaded}>
+                        <span class="pam-profile-total">{profiles.length} profiles available</span>
+                    </template>
+                </div>
+
+                <template if:false={profilesLoaded}>
+                    <div class="pam-loading-placeholder">
+                        <lightning-spinner alternative-text="Loading..." size="small"></lightning-spinner>
+                        <span class="pam-loading-text">Loading profiles…</span>
+                    </div>
+                </template>
+
+                <template if:true={profilesLoaded}>
+                    <div class="pam-search-wrap">
+                        <lightning-input type="search" label="Search" variant="label-hidden"
+                            placeholder="Search profiles by name…" value={searchTerm}
+                            onchange={handleSearch}></lightning-input>
+                    </div>
+                    <div class="pam-bulk-actions">
+                        <button class="pam-btn-link" onclick={handleSelectAll}>Select All</button>
+                        <span class="pam-divider">|</span>
+                        <button class="pam-btn-link" onclick={handleDeselectAll}>Deselect All</button>
+                        <template if:true={hasSelections}>
+                            <span class="pam-selection-badge">{selectedCount} selected</span>
+                        </template>
+                    </div>
+                    <div class="pam-profile-list">
+                        <template if:true={noResults}>
+                            <div class="pam-no-results">No profiles match your search.</div>
+                        </template>
+                        <template for:each={filteredProfiles} for:item="prof">
+                            <div key={prof.id} class={prof.rowClass} data-id={prof.id} onclick={handleProfileClick}
+                                role="button" tabindex="0" onkeydown={handleProfileRowKeydown}>
+                                <input type="checkbox" checked={prof.selected} data-id={prof.id}
+                                    onchange={handleProfileToggle} class="pam-checkbox" />
+                                <span class="pam-profile-name">{prof.name}</span>
+                                <template if:true={prof.userLicense}>
+                                    <span class="pam-license-badge">{prof.userLicense}</span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="pam-action-bar">
+                        <lightning-button label={getDetailsLabel} variant="brand"
+                            disabled={isGetDetailsDisabled} onclick={handleGetDetails}>
+                        </lightning-button>
+                        <template if:true={showProfileResults}>
+                            <lightning-button label={genProfileExcelLabel} variant="success"
+                                disabled={isGenProfileExcelDisabled} onclick={handleGenProfileExcel}>
+                            </lightning-button>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Retrieving profile details -->
+            <template if:true={isWorking}>
+                <div class="pam-loading-placeholder">
+                    <lightning-spinner alternative-text="Retrieving..." size="medium"></lightning-spinner>
+                    <span class="pam-loading-text">{workingText}</span>
+                    <span class="pam-loading-subtext">This may take a moment for large profiles.</span>
+                </div>
+            </template>
+
+            <!-- Profile Details results: one card per selected profile, 8 sub-tabs each -->
+            <template if:true={showProfileResults}>
+                <div class="pam-bulk-actions pam-results-toolbar">
+                    <button class="pam-btn-link" onclick={handleExpandAllProfiles}>Expand All</button>
+                    <span class="pam-divider">|</span>
+                    <button class="pam-btn-link" onclick={handleCollapseAllProfiles}>Collapse All</button>
+                    <span class="pam-divider">|</span>
+                    <label for="pam-profile-jump" class="pam-filter-label" style="margin:0;">Jump to:</label>
+                    <select id="pam-profile-jump" class="pam-filter-select pam-jump-select" onchange={handleJumpToProfileCard}>
+                        <option value="">Select a profile…</option>
+                        <template for:each={profileDetailsResults} for:item="jp">
+                            <option key={jp.rowKey} value={jp.rowKey}>{jp.profileName}</option>
+                        </template>
+                    </select>
+                </div>
+
+                <template if:true={isProfileSelectionStale}>
+                    <div class="pam-warn-banner">
+                        <span>⚠ Your profile selection has changed since these results were generated — showing results for the previous selection.</span>
+                        <button class="pam-warn-banner-btn" disabled={isGetDetailsDisabled} onclick={handleGetDetails}>Refresh Results</button>
+                    </div>
+                </template>
+
+                <template for:each={profileDetailsResults} for:item="p">
+                    <div key={p.rowKey} class="pam-card pam-sec-card" data-anchor={p.rowKey}>
+                        <div class="pam-sec-header">
+                            <div>
+                                <span class="pam-section-title">{p.profileName}</span>
+                                <span class="pam-api-name pam-sec-api">{p.userLicense}</span>
+                            </div>
+                            <div class="pam-sec-header-actions">
+                                <button class="pam-card-icon-btn" data-row={p.rowKey} onclick={handleToggleProfileCard} title="Expand or collapse this card" aria-label="Expand or collapse this card">{p.toggleIcon}</button>
+                                <button class="pam-card-icon-btn" data-row={p.rowKey} onclick={handleDismissProfileCard} title="Remove from view" aria-label="Remove this profile from view">✕</button>
+                            </div>
+                        </div>
+
+                        <template if:false={p.collapsed}>
+                            <div class="pam-subtab-bar">
+                                <template for:each={p.subTabs} for:item="st">
+                                    <button key={st.key} class={st.btnClass} data-row={p.rowKey} data-subtab={st.key} onclick={handleProfileSubTabClick}>
+                                        {st.label}
+                                    </button>
+                                </template>
+                            </div>
+
+                            <!-- Object Permissions -->
+                            <template if:true={p.showObjectPerms}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead>
+                                            <tr><th>Object</th><th>Read</th><th>Create</th><th>Edit</th><th>Delete</th><th>View All</th><th>Modify All</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <template if:false={p.objectPerms.length}>
+                                                <tr><td colspan="7" class="pam-no-results">No object permissions found.</td></tr>
+                                            </template>
+                                            <template for:each={p.objectPerms} for:item="o">
+                                                <tr key={o.rowKey}>
+                                                    <td>{o.objectName}</td><td>{o.readLabel}</td><td>{o.createLabel}</td>
+                                                    <td>{o.editLabel}</td><td>{o.deleteLabel}</td><td>{o.viewAllLabel}</td><td>{o.modifyAllLabel}</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Field Permissions -->
+                            <template if:true={p.showFieldPerms}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>Object</th><th>Field</th><th>Readable</th><th>Editable</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.fieldPerms.length}>
+                                                <tr><td colspan="4" class="pam-no-results">No field permissions found.</td></tr>
+                                            </template>
+                                            <template for:each={p.fieldPerms} for:item="f">
+                                                <tr key={f.rowKey}><td>{f.objectName}</td><td>{f.fieldName}</td><td>{f.readLabel}</td><td>{f.editLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Apex Class Access -->
+                            <template if:true={p.showApexClass}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>Apex Class</th><th>Enabled</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.apexClassAccess.length}>
+                                                <tr><td colspan="2" class="pam-no-results">No Apex Class access found.</td></tr>
+                                            </template>
+                                            <template for:each={p.apexClassAccess} for:item="a">
+                                                <tr key={a.rowKey}><td>{a.className}</td><td>{a.enabledLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Visualforce Access -->
+                            <template if:true={p.showVfPage}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>VF Page</th><th>Enabled</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.vfPageAccess.length}>
+                                                <tr><td colspan="2" class="pam-no-results">No Visualforce Page access found.</td></tr>
+                                            </template>
+                                            <template for:each={p.vfPageAccess} for:item="v">
+                                                <tr key={v.rowKey}><td>{v.pageName}</td><td>{v.enabledLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Tab Visibility -->
+                            <template if:true={p.showTabVis}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>Tab</th><th>Visibility</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.tabVisibility.length}>
+                                                <tr><td colspan="2" class="pam-no-results">No tab visibility settings found.</td></tr>
+                                            </template>
+                                            <template for:each={p.tabVisibility} for:item="t">
+                                                <tr key={t.rowKey}><td>{t.tabName}</td><td>{t.visibility}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Application Access -->
+                            <template if:true={p.showAppAccess}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>Application</th><th>Visible</th><th>Default</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.appAccess.length}>
+                                                <tr><td colspan="3" class="pam-no-results">No application access found.</td></tr>
+                                            </template>
+                                            <template for:each={p.appAccess} for:item="a">
+                                                <tr key={a.rowKey}><td>{a.appName}</td><td>{a.visibleLabel}</td><td>{a.defaultLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Record Type Access -->
+                            <template if:true={p.showRecordType}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>Object</th><th>Record Type</th><th>Visible</th><th>Default</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.recordTypeAccess.length}>
+                                                <tr><td colspan="4" class="pam-no-results">No record type access found.</td></tr>
+                                            </template>
+                                            <template for:each={p.recordTypeAccess} for:item="r">
+                                                <tr key={r.rowKey}><td>{r.objectName}</td><td>{r.recordTypeName}</td><td>{r.visibleLabel}</td><td>{r.defaultLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+
+                            <!-- Custom Permissions -->
+                            <template if:true={p.showCustomPerm}>
+                                <div class="pam-subtab-panel pam-results-table-wrap">
+                                    <table class="pam-results-table">
+                                        <thead><tr><th>API Name</th><th>Label</th><th>Enabled</th></tr></thead>
+                                        <tbody>
+                                            <template if:false={p.customPerms.length}>
+                                                <tr><td colspan="3" class="pam-no-results">No custom permissions found.</td></tr>
+                                            </template>
+                                            <template for:each={p.customPerms} for:item="c">
+                                                <tr key={c.rowKey}><td>{c.permissionName}</td><td>{c.permissionLabel}</td><td>{c.enabledLabel}</td></tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                </template>
+            </template>
+        </template>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             TAB 2 – OBJECT ACCESS
+             Fully independent: no profile selection, no profile data. Category
+             tree on the left (Objects/Apex/Lightning/Visualforce/Automation);
+             Object Security only ever appears for Standard/Custom Objects.
+        ═══════════════════════════════════════════════════════════════════ -->
+        <template if:true={isTab2}>
+            <div class="pam-tab-content">
+                <div class="pam-cat-layout">
+
+                    <!-- Category nav -->
+                    <div class="pam-cat-nav">
+                        <template for:each={categoryNav} for:item="group">
+                            <div key={group.key} class="pam-cat-group">
+                                <div class="pam-cat-group-label">{group.label}</div>
+                                <template for:each={group.items} for:item="item">
+                                    <button key={item.key} class={item.navClass} data-key={item.key} onclick={handleCategoryClick}>
+                                        {item.label}
+                                    </button>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="pam-cat-content">
+
+                        <!-- Category list -->
+                        <div class="pam-card">
+                            <div class="pam-card-header">
+                                <span class="pam-section-title">{activeCategoryLabel}</span>
+                                <template if:true={showSelectionBadge}>
+                                    <span class="pam-selection-badge">{selectionBadgeCount} selected</span>
+                                </template>
+                            </div>
+
+                            <template if:false={categoryLoaded}>
+                                <div class="pam-loading-placeholder">
+                                    <lightning-spinner alternative-text="Loading..." size="small"></lightning-spinner>
+                                    <span class="pam-loading-text">Loading {activeCategoryLabel}…</span>
+                                </div>
+                            </template>
+
+                            <template if:true={categoryLoaded}>
+                                <div class="pam-filter-bar">
+                                    <div class="pam-search-wrap">
+                                        <lightning-input type="search" label="Search" variant="label-hidden"
+                                            placeholder={categorySearchPlaceholder} value={categorySearchTerm} onchange={handleCategorySearch}>
+                                        </lightning-input>
+                                    </div>
+                                    <template if:true={showStatusFilter}>
+                                        <select class="pam-filter-select" aria-label="Filter by status" onchange={handleCategoryStatusFilter}>
+                                            <template for:each={categoryStatusOptions} for:item="opt">
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                    <template if:true={showApiVersionFilter}>
+                                        <select class="pam-filter-select" aria-label="Filter by API version" onchange={handleCategoryApiVersionFilter}>
+                                            <template for:each={categoryApiVersionOptions} for:item="opt">
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                    <template if:true={showProcessTypeFilter}>
+                                        <select class="pam-filter-select" aria-label="Filter by process type" onchange={handleCategoryProcessTypeFilter}>
+                                            <template for:each={categoryProcessTypeOptions} for:item="opt">
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                </div>
+
+                                <template if:true={isCategorySelectable}>
+                                    <div class="pam-bulk-actions">
+                                        <button class="pam-btn-link" onclick={handleObjectSelectAll}>Select All</button>
+                                        <span class="pam-divider">|</span>
+                                        <button class="pam-btn-link" onclick={handleObjectClearAll}>Clear All</button>
+                                    </div>
+                                </template>
+
+                                <!-- Standard / Custom Objects: selectable table -->
+                                <template if:true={isObjectCategory}>
+                                    <div class="pam-obj-table-wrap">
+                                        <table class="pam-obj-table">
+                                            <thead>
+                                                <tr>
+                                                    <th class="pam-th-chk"></th>
+                                                    <th class="pam-sortable" data-field="label" onclick={handleObjSort}>Object Label{objSortIndicators.label}</th>
+                                                    <th>Developer Name</th>
+                                                    <th class="pam-sortable" data-field="apiName" onclick={handleObjSort}>API Name{objSortIndicators.apiName}</th>
+                                                    <th class="pam-sortable" data-field="typeLabel" onclick={handleObjSort}>Type{objSortIndicators.typeLabel}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template if:true={categoryNoResults}>
+                                                    <tr><td colspan="5" class="pam-no-results">No objects match your search.</td></tr>
+                                                </template>
+                                                <template for:each={filteredCategoryItems} for:item="obj">
+                                                    <tr key={obj.id} class={obj.rowClass} data-id={obj.id} onclick={handleObjectRowClick}
+                                                        tabindex="0" onkeydown={handleObjectRowKeydown}>
+                                                        <td class="pam-td-chk">
+                                                            <input type="checkbox" checked={obj.selected} data-id={obj.id}
+                                                                onchange={handleObjectToggle} class="pam-checkbox" />
+                                                        </td>
+                                                        <td title={obj.label}>{obj.label}</td>
+                                                        <td title={obj.developerName}>{obj.developerName}</td>
+                                                        <td class="pam-api-name" title={obj.apiName}>{obj.apiName}</td>
+                                                        <td>{obj.typeLabel}</td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="pam-action-bar">
+                                        <lightning-button label={getObjPermsLabel} variant="brand"
+                                            disabled={isGetObjPermsDisabled} onclick={handleAnalyzeObjectSecurity}>
+                                        </lightning-button>
+                                        <template if:true={showObjResults}>
+                                            <lightning-button label={genObjExcelLabel} variant="success"
+                                                disabled={isGenObjExcelDisabled} onclick={handleGenObjExcel}>
+                                            </lightning-button>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <!-- Apex / Visualforce / Automation: plain list, checkbox only where selection does something -->
+                                <template if:false={isObjectCategory}>
+                                    <div class="pam-obj-table-wrap">
+                                        <table class="pam-obj-table">
+                                            <thead>
+                                                <tr>
+                                                    <template if:true={isCategorySelectable}><th class="pam-th-chk"></th></template>
+                                                    <th>Name</th>
+                                                    <template if:true={showStatusFilter}><th>Status</th></template>
+                                                    <template if:true={showApiVersionFilter}><th>API Version</th></template>
+                                                    <template if:true={showProcessTypeFilter}><th>Process Type</th></template>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template if:true={categoryNoResults}>
+                                                    <tr><td colspan="5" class="pam-no-results">No items match your search.</td></tr>
+                                                </template>
+                                                <template for:each={filteredCategoryItems} for:item="it">
+                                                    <tr key={it.id} class={it.rowClass} data-id={it.id} onclick={handleObjectRowClick}
+                                                        tabindex="0" onkeydown={handleObjectRowKeydown}>
+                                                        <template if:true={isCategorySelectable}>
+                                                            <td class="pam-td-chk">
+                                                                <input type="checkbox" checked={it.selected} data-id={it.id}
+                                                                    onchange={handleObjectToggle} class="pam-checkbox" />
+                                                            </td>
+                                                        </template>
+                                                        <td title={it.name}>{it.name}</td>
+                                                        <template if:true={showStatusFilter}><td>{it.status}</td></template>
+                                                        <template if:true={showApiVersionFilter}><td>{it.apiVersion}</td></template>
+                                                        <template if:true={showProcessTypeFilter}><td>{it.processType}</td></template>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <template if:true={isCategorySelectable}>
+                                        <div class="pam-action-bar">
+                                            <template if:true={showAnalyzeAccessButton}>
+                                                <lightning-button label={analyzeAccessLabel} variant="brand"
+                                                    disabled={isAnalyzeAccessDisabled} onclick={handleAnalyzeComponentAccess}>
+                                                </lightning-button>
+                                            </template>
+                                            <lightning-button label={genCategoryExcelLabel} variant="success"
+                                                disabled={isGenCategoryExcelDisabled} onclick={handleGenCategoryExcel}>
+                                            </lightning-button>
+                                        </div>
+                                    </template>
+                                </template>
+                            </template>
+                        </div>
+
+                        <!-- Component Access loading (Apex Classes / Visualforce Pages) -->
+                        <template if:true={isLoadingComponentAccess}>
+                            <div class="pam-loading-placeholder">
+                                <lightning-spinner alternative-text="Loading..." size="medium"></lightning-spinner>
+                                <span class="pam-loading-text">Retrieving access details…</span>
+                            </div>
+                        </template>
+
+                        <!-- Component Access results: one card per selected Apex Class / VF Page -->
+                        <template if:true={showComponentAccess}>
+                            <template if:true={isComponentSelectionStale}>
+                                <div class="pam-warn-banner">
+                                    <span>⚠ Your selection has changed since these results were generated — showing results for the previous selection.</span>
+                                    <button class="pam-warn-banner-btn" disabled={isAnalyzeAccessDisabled} onclick={handleAnalyzeComponentAccess}>Refresh Results</button>
+                                </div>
+                            </template>
+                            <template for:each={componentAccessResults} for:item="ca">
+                                <div key={ca.rowKey} class="pam-card pam-sec-card">
+                                    <div class="pam-sec-header">
+                                        <span class="pam-section-title">{ca.componentName}</span>
+                                    </div>
+                                    <div class="pam-subtab-panel pam-results-table-wrap">
+                                        <table class="pam-results-table">
+                                            <thead><tr><th>Granted Via</th><th>Name</th></tr></thead>
+                                            <tbody>
+                                                <template if:false={ca.accessGrants.length}>
+                                                    <tr><td colspan="2" class="pam-no-results">No Profile or Permission Set grants access to this item.</td></tr>
+                                                </template>
+                                                <template for:each={ca.accessGrants} for:item="g">
+                                                    <tr key={g.rowKey}><td>{g.parentType}</td><td>{g.parentName}</td></tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </template>
+                        </template>
+
+                        <!-- Object Security loading -->
+                        <template if:true={isLoadingObjSecurity}>
+                            <div class="pam-loading-placeholder">
+                                <lightning-spinner alternative-text="Loading..." size="medium"></lightning-spinner>
+                                <span class="pam-loading-text">Retrieving object security details…</span>
+                            </div>
+                        </template>
+
+                        <!-- Object Security results: one card per selected object, 8 sub-tabs each -->
+                        <template if:true={showObjResults}>
+                            <div class="pam-info-banner">
+                                <lightning-icon icon-name="utility:info" size="x-small" class="pam-info-banner-icon"></lightning-icon>
+                                <span>Some security areas can't be retrieved via SOQL (Org-Wide Defaults, Sharing Rules, Tab Visibility) — see each object's "Security Limitations" sub-tab below for the full disclosure.</span>
+                            </div>
+
+                            <div class="pam-bulk-actions pam-results-toolbar">
+                                <button class="pam-btn-link" onclick={handleExpandAllObj}>Expand All</button>
+                                <span class="pam-divider">|</span>
+                                <button class="pam-btn-link" onclick={handleCollapseAllObj}>Collapse All</button>
+                                <span class="pam-divider">|</span>
+                                <label for="pam-obj-jump" class="pam-filter-label" style="margin:0;">Jump to:</label>
+                                <select id="pam-obj-jump" class="pam-filter-select pam-jump-select" onchange={handleJumpToObjCard}>
+                                    <option value="">Select an object…</option>
+                                    <template for:each={objSecurityResults} for:item="jr">
+                                        <option key={jr.rowKey} value={jr.rowKey}>{jr.objectLabel}</option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <template if:true={isObjSelectionStale}>
+                                <div class="pam-warn-banner">
+                                    <span>⚠ Your object selection has changed since these results were generated — showing results for the previous selection.</span>
+                                    <button class="pam-warn-banner-btn" disabled={isGetObjPermsDisabled} onclick={handleAnalyzeObjectSecurity}>Refresh Results</button>
+                                </div>
+                            </template>
+
+                            <template for:each={objSecurityResults} for:item="r">
+                                <div key={r.rowKey} class="pam-card pam-sec-card" data-anchor={r.rowKey}>
+                                    <div class="pam-sec-header">
+                                        <div>
+                                            <span class="pam-section-title">{r.objectLabel}</span>
+                                            <span class="pam-api-name pam-sec-api">{r.objectApiName}</span>
+                                        </div>
+                                        <div class="pam-sec-header-actions">
+                                            <button class="pam-card-icon-btn" data-row={r.rowKey} onclick={handleToggleObjCard} title="Expand or collapse this card" aria-label="Expand or collapse this card">{r.toggleIcon}</button>
+                                            <button class="pam-card-icon-btn" data-row={r.rowKey} onclick={handleDismissObjCard} title="Remove from view" aria-label="Remove this object from view">✕</button>
+                                        </div>
+                                    </div>
+
+                                    <template if:false={r.collapsed}>
+                                        <div class="pam-subtab-bar">
+                                            <template for:each={r.subTabs} for:item="st">
+                                                <button key={st.key} class={st.btnClass} data-row={r.rowKey} data-subtab={st.key} onclick={handleSubTabClick}>
+                                                    {st.label}
+                                                </button>
+                                            </template>
+                                        </div>
+
+                                        <!-- Object Permissions -->
+                                        <template if:true={r.showObjPerms}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead>
+                                                        <tr><th>Granted Via</th><th>Name</th><th>Read</th><th>Create</th><th>Edit</th><th>Delete</th><th>View All</th><th>Modify All</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template if:false={r.objectPermissions.length}>
+                                                            <tr><td colspan="8" class="pam-no-results">No Profile or Permission Set grants access to this object.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.objectPermissions} for:item="p">
+                                                            <tr key={p.rowKey}>
+                                                                <td>{p.parentType}</td><td>{p.parentName}</td>
+                                                                <td>{p.readLabel}</td><td>{p.createLabel}</td><td>{p.editLabel}</td>
+                                                                <td>{p.deleteLabel}</td><td>{p.viewAllLabel}</td><td>{p.modifyAllLabel}</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Field-Level Security -->
+                                        <template if:true={r.showFls}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead>
+                                                        <tr><th>Field API Name</th><th>Field Label</th><th>Granted Via</th><th>Name</th><th>Read</th><th>Edit</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template if:false={r.fieldPermissions.length}>
+                                                            <tr><td colspan="6" class="pam-no-results">No field-level security overrides found.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.fieldPermissions} for:item="f">
+                                                            <tr key={f.rowKey}>
+                                                                <td>{f.fieldApiName}</td><td>{f.fieldLabel}</td>
+                                                                <td>{f.parentType}</td><td>{f.parentName}</td>
+                                                                <td>{f.readLabel}</td><td>{f.editLabel}</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Permission Sets -->
+                                        <template if:true={r.showPermSets}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead>
+                                                        <tr><th>Permission Set</th><th>Read</th><th>Create</th><th>Edit</th><th>Delete</th><th>View All</th><th>Modify All</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template if:false={r.permissionSets.length}>
+                                                            <tr><td colspan="7" class="pam-no-results">No standalone Permission Set grants access to this object.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.permissionSets} for:item="p">
+                                                            <tr key={p.rowKey}>
+                                                                <td>{p.name}</td><td>{p.readLabel}</td><td>{p.createLabel}</td>
+                                                                <td>{p.editLabel}</td><td>{p.deleteLabel}</td><td>{p.viewAllLabel}</td><td>{p.modifyAllLabel}</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Permission Set Groups -->
+                                        <template if:true={r.showPermSetGroups}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead>
+                                                        <tr><th>Permission Set Group</th><th>Included Permission Set</th><th>Read</th><th>Create</th><th>Edit</th><th>Delete</th><th>View All</th><th>Modify All</th></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template if:false={r.permissionSetGroups.length}>
+                                                            <tr><td colspan="8" class="pam-no-results">No Permission Set Group grants access to this object.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.permissionSetGroups} for:item="g">
+                                                            <tr key={g.rowKey}>
+                                                                <td>{g.groupLabel}</td><td>{g.includedPermSetName}</td>
+                                                                <td>{g.readLabel}</td><td>{g.createLabel}</td><td>{g.editLabel}</td>
+                                                                <td>{g.deleteLabel}</td><td>{g.viewAllLabel}</td><td>{g.modifyAllLabel}</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Role Hierarchy -->
+                                        <template if:true={r.showRoles}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <div class="pam-subtab-note">Role Hierarchy Structure — org-wide, not object-specific. Does not represent calculated record-level access.</div>
+                                                <table class="pam-results-table">
+                                                    <thead><tr><th>Role Name</th><th>Developer Name</th><th>Parent Role</th></tr></thead>
+                                                    <tbody>
+                                                        <template if:false={r.roleHierarchy.length}>
+                                                            <tr><td colspan="3" class="pam-no-results">No roles defined in this org.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.roleHierarchy} for:item="role">
+                                                            <tr key={role.rowKey}><td>{role.name}</td><td>{role.developerName}</td><td>{role.parentRoleLabel}</td></tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Record Types -->
+                                        <template if:true={r.showRecordTypes}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead><tr><th>Record Type</th><th>Developer Name</th><th>Active</th></tr></thead>
+                                                    <tbody>
+                                                        <template if:false={r.recordTypes.length}>
+                                                            <tr><td colspan="3" class="pam-no-results">No record types defined for this object.</td></tr>
+                                                        </template>
+                                                        <template for:each={r.recordTypes} for:item="rt">
+                                                            <tr key={rt.rowKey}><td>{rt.name}</td><td>{rt.developerName}</td><td>{rt.activeLabel}</td></tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+
+                                        <!-- Record-Level Access -->
+                                        <template if:true={r.showRecordShare}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <template if:true={r.recordShareNote}>
+                                                    <div class="pam-subtab-note">{r.recordShareNote}</div>
+                                                </template>
+                                                <template if:true={r.recordLevelShares.length}>
+                                                    <table class="pam-results-table">
+                                                        <thead><tr><th>User Or Group Id</th><th>Access Level</th><th>Row Cause</th></tr></thead>
+                                                        <tbody>
+                                                            <template for:each={r.recordLevelShares} for:item="sh">
+                                                                <tr key={sh.rowKey}><td>{sh.userOrGroupId}</td><td>{sh.accessLevel}</td><td>{sh.rowCause}</td></tr>
+                                                            </template>
+                                                        </tbody>
+                                                    </table>
+                                                </template>
+                                            </div>
+                                        </template>
+
+                                        <!-- Security Limitations -->
+                                        <template if:true={r.showLimitations}>
+                                            <div class="pam-subtab-panel pam-results-table-wrap">
+                                                <table class="pam-results-table">
+                                                    <thead><tr><th>Security Area</th><th>SOQL Support</th><th>Result</th></tr></thead>
+                                                    <tbody>
+                                                        <template for:each={r.securityLimitations} for:item="lm">
+                                                            <tr key={lm.rowKey}>
+                                                                <td>{lm.area}</td>
+                                                                <td><span class={lm.supportBadgeClass} title={lm.supportTooltip}>{lm.soqlSupport}</span></td>
+                                                                <td>{lm.result}</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </div>
+                            </template>
+                        </template>
+
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ══════════════════════════════════════════════════════════════════
+             TAB 3 – ACCESS COMPARISON
+        ═══════════════════════════════════════════════════════════════════ -->
+        <template if:true={isTab3}>
+            <div class="pam-tab-content">
+
+                <!-- Workflow guidance — Access Comparison depends on files exported from the other two tabs -->
+                <div class="pam-info-banner">
+                    <lightning-icon icon-name="utility:info" size="x-small" class="pam-info-banner-icon"></lightning-icon>
+                    <span><strong>How this works:</strong> 1) On the Profile Access or Object Access tab, select items and click Generate Excel. 2) Upload that same export below from both a UAT and a Production org. 3) Click Compare Access to see the differences.</span>
+                </div>
+
+                <!-- Comparison Type selector — compact SLDS-style combobox, not a card -->
+                <div class="pam-comp-type-row">
+                    <div class="pam-filter-item pam-comp-type-select">
+                        <label class="pam-filter-label">Comparison Type</label>
+                        <select class="pam-filter-select" onchange={handleComparisonTypeChange}>
+                            <option value="Profile Access" selected={isProfileAccessComparison}>Profile Access</option>
+                            <option value="Object Access" selected={isObjectAccessComparison}>Object Access</option>
+                        </select>
+                    </div>
+                    <p class="pam-btn-hint pam-comp-type-hint">{comparisonTypeHint}</p>
+                </div>
+
+                <!-- Upload section -->
+                <div class="pam-upload-section">
+                    <div class="pam-upload-card">
+                        <div class="pam-upload-header">
+                            <lightning-icon icon-name="utility:upload" size="small"></lightning-icon>
+                            <span class="pam-upload-title">{uatUploadLabel}</span>
+                        </div>
+                        <div class="pam-upload-body">
+                            <template if:true={uatFileName}>
+                                <div class="pam-file-badge">
+                                    <lightning-icon icon-name="doctype:excel" size="small"></lightning-icon>
+                                    <span class="pam-file-name">{uatFileName}</span>
+                                    <template if:true={uatValid}>
+                                        <lightning-icon icon-name="utility:success" size="x-small" variant="success"></lightning-icon>
+                                    </template>
+                                    <template if:true={uatError}>
+                                        <button class="pam-card-icon-btn" onclick={handleRemoveUatFile} title="Remove file" aria-label="Remove invalid UAT file">
+                                            <lightning-icon icon-name="utility:close" size="x-small" variant="error"></lightning-icon>
+                                        </button>
+                                    </template>
+                                </div>
+                                <template if:true={uatError}>
+                                    <div class="pam-upload-error">{uatError}</div>
+                                </template>
+                            </template>
+                            <template if:false={uatFileName}>
+                                <div class="pam-upload-empty">No file uploaded yet.</div>
+                            </template>
+                            <label class="pam-upload-btn">
+                                {uatUploadBtnLabel}
+                                <input type="file" accept=".xls,.xlsx" onchange={handleUatUpload} class="pam-file-input" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="pam-upload-vs">VS</div>
+
+                    <div class="pam-upload-card">
+                        <div class="pam-upload-header">
+                            <lightning-icon icon-name="utility:upload" size="small"></lightning-icon>
+                            <span class="pam-upload-title">{prodUploadLabel}</span>
+                        </div>
+                        <div class="pam-upload-body">
+                            <template if:true={prodFileName}>
+                                <div class="pam-file-badge">
+                                    <lightning-icon icon-name="doctype:excel" size="small"></lightning-icon>
+                                    <span class="pam-file-name">{prodFileName}</span>
+                                    <template if:true={prodValid}>
+                                        <lightning-icon icon-name="utility:success" size="x-small" variant="success"></lightning-icon>
+                                    </template>
+                                    <template if:true={prodError}>
+                                        <button class="pam-card-icon-btn" onclick={handleRemoveProdFile} title="Remove file" aria-label="Remove invalid Production file">
+                                            <lightning-icon icon-name="utility:close" size="x-small" variant="error"></lightning-icon>
+                                        </button>
+                                    </template>
+                                </div>
+                                <template if:true={prodError}>
+                                    <div class="pam-upload-error">{prodError}</div>
+                                </template>
+                            </template>
+                            <template if:false={prodFileName}>
+                                <div class="pam-upload-empty">No file uploaded yet.</div>
+                            </template>
+                            <label class="pam-upload-btn">
+                                {prodUploadBtnLabel}
+                                <input type="file" accept=".xls,.xlsx" onchange={handleProdUpload} class="pam-file-input" />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="pam-comp-actions">
+                    <div class="pam-comp-btn-group">
+                        <div class="pam-comp-btn-wrap">
+                            <lightning-button label={compareApexLabel} variant="brand"
+                                disabled={isCompareDisabled}
+                                onclick={handleCompareApex}>
+                            </lightning-button>
+                            <p class="pam-btn-hint">{compareEngineHint}</p>
+                        </div>
+                        <template if:true={agentforceAvailable}>
+                            <div class="pam-comp-btn-wrap">
+                                <lightning-button label={agentforceLabel} variant="brand-outline"
+                                    icon-name="utility:einstein" disabled={isAgentforceDisabled}
+                                    onclick={handleAnalyzeAgentforce}>
+                                </lightning-button>
+                                <p class="pam-btn-hint">Requires Agentforce + Prompt Template "AccessComparison_Analysis".</p>
+                            </div>
+                        </template>
+                        <template if:false={agentforceAvailable}>
+                            <div class="pam-comp-btn-wrap">
+                                <p class="pam-btn-hint pam-agentforce-unavailable" title={agentforceUnavailableReason}>
+                                    <lightning-icon icon-name="utility:einstein" size="xx-small"></lightning-icon>
+                                    Agentforce isn't available in this org — Compare Access above still works normally.
+                                </p>
+                            </div>
+                        </template>
+                        <template if:true={showCompResults}>
+                            <div class="pam-comp-btn-wrap">
+                                <lightning-button label="Export Comparison Excel" variant="neutral"
+                                    icon-name="utility:download" onclick={handleExportComparison}>
+                                </lightning-button>
+                                <p class="pam-btn-hint">Exports 3 sheets: Comparison, Summary, Differences — all rows, not just the current filter/page.</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Comparing spinner -->
+                <template if:true={isComparing}>
+                    <div class="pam-loading-placeholder">
+                        <lightning-spinner alternative-text="Comparing..." size="medium"></lightning-spinner>
+                        <span class="pam-loading-text">Running Apex comparison…</span>
+                    </div>
+                </template>
+
+                <!-- Summary cards -->
+                <template if:true={showCompResults}>
+                    <div class="pam-summary-cards">
+                        <div class="pam-summary-card pam-summary-card--blue">
+                            <div class="pam-summary-num">{compSummaryFmt.totalObjects}</div>
+                            <div class="pam-summary-lbl">{compColLabelItem}s Compared</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--blue">
+                            <div class="pam-summary-num">{compSummaryFmt.totalProfiles}</div>
+                            <div class="pam-summary-lbl">Profiles Compared</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--blue">
+                            <div class="pam-summary-num">{compSummaryFmt.totalPerms}</div>
+                            <div class="pam-summary-lbl">Permissions Checked</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--green">
+                            <div class="pam-summary-num">{compSummaryFmt.matching}</div>
+                            <div class="pam-summary-lbl">Matching</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--red">
+                            <div class="pam-summary-num">{compSummaryFmt.differences}</div>
+                            <div class="pam-summary-lbl">Differences</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--orange">
+                            <div class="pam-summary-num">{compSummaryFmt.missingInUat}</div>
+                            <div class="pam-summary-lbl">Missing in UAT</div>
+                        </div>
+                        <div class="pam-summary-card pam-summary-card--orange">
+                            <div class="pam-summary-num">{compSummaryFmt.missingInProd}</div>
+                            <div class="pam-summary-lbl">Missing in Prod</div>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="pam-comp-filters">
+                        <div class="pam-filter-item">
+                            <label for="pam-comp-status" class="pam-filter-label">Status</label>
+                            <select id="pam-comp-status" class="pam-filter-select" onchange={handleCompStatusFilter}>
+                                <template for:each={compStatusOptions} for:item="opt">
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="pam-filter-item">
+                            <label for="pam-comp-profile" class="pam-filter-label">Profile</label>
+                            <select id="pam-comp-profile" class="pam-filter-select" onchange={handleCompProfileFilter}>
+                                <template for:each={compProfileOptions} for:item="opt">
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="pam-filter-item pam-filter-search">
+                            <label class="pam-filter-label">Object Search</label>
+                            <lightning-input type="search" label="Object Search" variant="label-hidden"
+                                placeholder="Search API name…" value={compObjectSearch} onchange={handleCompObjectSearch}>
+                            </lightning-input>
+                        </div>
+                        <div class="pam-filter-count">{filteredComp.length} of {compResults.length} rows</div>
+                    </div>
+
+                    <!-- Comparison table -->
+                    <div class="pam-card pam-results-card">
+                        <div class="pam-results-table-wrap">
+                            <table class="pam-results-table pam-comp-table">
+                                <thead>
+                                    <tr>
+                                        <th class="pam-sortable" data-field="profile" onclick={handleCompSort}>Profile{compSortIndicators.profile}</th>
+                                        <th class="pam-sortable" data-field="objectLabel" onclick={handleCompSort}>{compColLabelCategory}{compSortIndicators.objectLabel}</th>
+                                        <th class="pam-sortable" data-field="apiName" onclick={handleCompSort}>{compColLabelItem}{compSortIndicators.apiName}</th>
+                                        <th class="pam-sortable" data-field="permission" onclick={handleCompSort}>Permission{compSortIndicators.permission}</th>
+                                        <th>UAT</th>
+                                        <th>Production</th>
+                                        <th class="pam-sortable" data-field="status" onclick={handleCompSort}>Status{compSortIndicators.status}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template if:true={noCompResults}>
+                                        <tr>
+                                            <td colspan="7" class="pam-no-results">No rows match the current filters.</td>
+                                        </tr>
+                                    </template>
+                                    <template for:each={pagedComp} for:item="r">
+                                        <tr key={r.rowKey} class={r.rowClass}>
+                                            <td>{r.profile}</td>
+                                            <td>{r.objectLabel}</td>
+                                            <td class="pam-api-name">{r.apiName}</td>
+                                            <td>{r.permission}</td>
+                                            <td class={r.uatCellClass}>{r.uatValue}</td>
+                                            <td class={r.prodCellClass}>{r.prodValue}</td>
+                                            <td><span class={r.statusBadgeClass}>{r.status}</span></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <template if:true={showCompPagination}>
+                            <div class="pam-filter-bar" style="justify-content: space-between; align-items: center;">
+                                <lightning-button label="Previous" icon-name="utility:chevronleft" disabled={isCompPrevDisabled} onclick={handleCompPrevPage}></lightning-button>
+                                <div class="pam-page-jump">
+                                    <span>{compPageInfo}</span>
+                                    <label for="pam-comp-jump-page">Go to</label>
+                                    <input id="pam-comp-jump-page" type="number" min="1" value={compPage} onchange={handleCompJumpToPage} />
+                                    <select class="pam-filter-select pam-page-size-select" aria-label="Rows per page" onchange={handleCompPageSizeChange}>
+                                        <option value="200" selected={isCompPageSize200}>200 / page</option>
+                                        <option value="500" selected={isCompPageSize500}>500 / page</option>
+                                        <option value="1000" selected={isCompPageSize1000}>1000 / page</option>
+                                    </select>
+                                </div>
+                                <lightning-button label="Next" icon-name="utility:chevronright" icon-position="right" disabled={isCompNextDisabled} onclick={handleCompNextPage}></lightning-button>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Agentforce spinner -->
+                <template if:true={isAgentforcing}>
+                    <div class="pam-loading-placeholder">
+                        <lightning-spinner alternative-text="Analyzing..." size="medium"></lightning-spinner>
+                        <span class="pam-loading-text">Calling Agentforce Prompt Builder…</span>
+                    </div>
+                </template>
+
+                <!-- Agentforce / AI analysis result — verdict badge + stat cards, plus its own full
+                     comparison table with independent filters/sort/pagination from Compare Access. -->
+                <template if:true={showAgentforce}>
+                    <div class="pam-card pam-ai-card">
+                        <div class="pam-card-header">
+                            <div class="pam-card-header-left">
+                                <lightning-icon icon-name="utility:einstein" size="small"></lightning-icon>
+                                <span class="pam-section-title">Agentforce Analysis</span>
+                            </div>
+                            <template if:true={agentforceVerdict}>
+                                <span class={agentforceVerdict.badgeClass}>{agentforceVerdict.label}</span>
+                            </template>
+                        </div>
+
+                        <template if:true={agentforceSummary}>
+                            <div class="pam-summary-cards pam-summary-cards--compact">
+                                <div class="pam-summary-card pam-summary-card--blue">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.totalObjects}</div>
+                                    <div class="pam-summary-lbl">{compColLabelItem}s Compared</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--blue">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.totalProfiles}</div>
+                                    <div class="pam-summary-lbl">Profiles Compared</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--blue">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.totalPerms}</div>
+                                    <div class="pam-summary-lbl">Permissions Checked</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--green">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.matching}</div>
+                                    <div class="pam-summary-lbl">Matching</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--red">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.differences}</div>
+                                    <div class="pam-summary-lbl">Differences</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--orange">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.missingInUat}</div>
+                                    <div class="pam-summary-lbl">Missing in UAT</div>
+                                </div>
+                                <div class="pam-summary-card pam-summary-card--orange">
+                                    <div class="pam-summary-num">{agentforceSummaryFmt.missingInProd}</div>
+                                    <div class="pam-summary-lbl">Missing in Prod</div>
+                                </div>
+                            </div>
+                            <div class="pam-ai-export-row">
+                                <lightning-button label="Export Comparison Excel" variant="neutral"
+                                    icon-name="utility:download" onclick={handleExportAgentforceComparison}>
+                                </lightning-button>
+                            </div>
+
+                            <div class="pam-comp-filters pam-comp-filters--compact">
+                                <div class="pam-filter-item">
+                                    <label for="pam-af-status" class="pam-filter-label">Status</label>
+                                    <select id="pam-af-status" class="pam-filter-select" onchange={handleAgentforceStatusFilter}>
+                                        <template for:each={agentforceStatusOptions} for:item="opt">
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div class="pam-filter-item">
+                                    <label for="pam-af-profile" class="pam-filter-label">Profile</label>
+                                    <select id="pam-af-profile" class="pam-filter-select" onchange={handleAgentforceProfileFilter}>
+                                        <template for:each={agentforceProfileOptions} for:item="opt">
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div class="pam-filter-item pam-filter-search">
+                                    <label class="pam-filter-label">Object Search</label>
+                                    <lightning-input type="search" label="Object Search" variant="label-hidden"
+                                        placeholder="Search API name…" value={agentforceObjectSearch} onchange={handleAgentforceObjectSearch}>
+                                    </lightning-input>
+                                </div>
+                                <div class="pam-filter-count">{agentforceFilteredRows.length} of {agentforceRows.length} rows</div>
+                            </div>
+
+                            <div class="pam-ai-table-wrap">
+                                <table class="pam-results-table pam-comp-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="pam-sortable" data-field="profile" onclick={handleAgentforceSort}>Profile{agentforceSortIndicators.profile}</th>
+                                            <th class="pam-sortable" data-field="objectLabel" onclick={handleAgentforceSort}>{compColLabelCategory}{agentforceSortIndicators.objectLabel}</th>
+                                            <th class="pam-sortable" data-field="apiName" onclick={handleAgentforceSort}>{compColLabelItem}{agentforceSortIndicators.apiName}</th>
+                                            <th class="pam-sortable" data-field="permission" onclick={handleAgentforceSort}>Permission{agentforceSortIndicators.permission}</th>
+                                            <th>UAT</th>
+                                            <th>Production</th>
+                                            <th class="pam-sortable" data-field="status" onclick={handleAgentforceSort}>Status{agentforceSortIndicators.status}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template if:true={noAgentforceResults}>
+                                            <tr>
+                                                <td colspan="7" class="pam-no-results">No rows match the current filters.</td>
+                                            </tr>
+                                        </template>
+                                        <template for:each={pagedAgentforceRows} for:item="r">
+                                            <tr key={r.rowKey} class={r.rowClass}>
+                                                <td>{r.profile}</td>
+                                                <td>{r.objectLabel}</td>
+                                                <td class="pam-api-name">{r.apiName}</td>
+                                                <td>{r.permission}</td>
+                                                <td class={r.uatCellClass}>{r.uatValue}</td>
+                                                <td class={r.prodCellClass}>{r.prodValue}</td>
+                                                <td><span class={r.statusBadgeClass}>{r.status}</span></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <template if:true={showAgentforcePagination}>
+                                <div class="pam-filter-bar" style="justify-content: space-between; align-items: center; margin: 0 1.25rem 1.25rem;">
+                                    <lightning-button label="Previous" icon-name="utility:chevronleft" disabled={isAgentforcePrevDisabled} onclick={handleAgentforcePrevPage}></lightning-button>
+                                    <div class="pam-page-jump">
+                                        <span>{agentforcePageInfo}</span>
+                                        <label for="pam-af-jump-page">Go to</label>
+                                        <input id="pam-af-jump-page" type="number" min="1" value={agentforcePage} onchange={handleAgentforceJumpToPage} />
+                                        <select class="pam-filter-select pam-page-size-select" aria-label="Rows per page" onchange={handleAgentforcePageSizeChange}>
+                                            <option value="200" selected={isAgentforcePageSize200}>200 / page</option>
+                                            <option value="500" selected={isAgentforcePageSize500}>500 / page</option>
+                                            <option value="1000" selected={isAgentforcePageSize1000}>1000 / page</option>
+                                        </select>
+                                    </div>
+                                    <lightning-button label="Next" icon-name="utility:chevronright" icon-position="right" disabled={isAgentforceNextDisabled} onclick={handleAgentforceNextPage}></lightning-button>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                </template>
+
+            </div>
+        </template>
+
+        <!-- ── Toast ──────────────────────────────────────────────────────── -->
+        <template if:true={toastVisible}>
+            <div class={toastClass} role="alert">
+                <strong>{toastTitle}</strong> — {toastMessage}
+                <button class="pam-toast-close" onclick={dismissToast} aria-label="Close notification">✕</button>
+            </div>
+        </template>
+
+    </div>
+</template>
